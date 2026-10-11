@@ -1,0 +1,80 @@
+name: CI
+
+"on":
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run type-check
+
+  benchmark:
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    outputs:
+      pages: ${{ steps.report.outputs.pages }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run setup
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:fixtures
+      - run: npm run benchmark -- --iterations 5 --warmups 1
+      - name: Generate report
+        id: report
+        if: always()
+        run: |
+          if test -f results/horizontal-scrolling.json; then
+            npm run report
+            echo 'pages=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'pages=false' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: horizontal-scrolling-results
+          path: |
+            results/**
+            .tmp/pages/**
+      - uses: actions/configure-pages@v5
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.report.outputs.pages == 'true'
+      - uses: actions/upload-pages-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.report.outputs.pages == 'true'
+        with:
+          path: .tmp/pages
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.benchmark.outputs.pages == 'true' && needs.benchmark.result == 'success'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: benchmark
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

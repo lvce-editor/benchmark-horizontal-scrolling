@@ -1,0 +1,46 @@
+name: PR
+
+"on":
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run type-check
+
+  benchmark-smoke:
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run setup
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:fixtures
+      - run: npm run benchmark -- --iterations 1 --warmups 0
+      - if: always()
+        run: npm run report
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: horizontal-scrolling-smoke
+          path: |
+            results/**
+            .tmp/pages/**
