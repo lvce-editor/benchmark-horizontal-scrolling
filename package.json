@@ -8,7 +8,7 @@
     "report": "node src/report.ts",
     "setup": "node src/setup.ts",
     "lint": "eslint .",
-    "test": "node --test test/*.test.ts",
+    "test": "npm run setup && node --test test/*.test.ts",
     "test:fixtures": "node --test test/fixture.test.ts",
     "type-check": "tsc --noEmit"
   },
